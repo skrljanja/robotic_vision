@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 
 import roslib
 import rospy
@@ -24,17 +25,17 @@ class sin_trajectory2:
         return np.array([J1, J3, J4])
         
     def callback(self):
-        self.joint2 = Float64()
+        self.joint1 = Float64()
         self.joint3 = Float64()
         self.joint4 = Float64()
         
         new_position = self.trajectory()
         
-        self.joint2.data = new_position[0]
+        self.joint1.data = new_position[0]
         self.joint3.data = new_position[1]
         self.joint4.data = new_position[2]
 
-        self.joint2_publisher.publish(self.joint2)
+        self.joint1_publisher.publish(self.joint1)
         self.joint3_publisher.publish(self.joint3)
         self.joint4_publisher.publish(self.joint4)
         self.rate.sleep()
