@@ -14,6 +14,9 @@ from std_msgs.msg import Float64MultiArray, Float64
 from cv_bridge import CvBridge, CvBridgeError
 
 
+# we know that when joint 2 and 4 move, it is only seen in the camera 2. when only joint 3 moves only seen by camera 1.
+
+
 class vision1:
 
   # Defines publisher and subscriber
@@ -34,16 +37,15 @@ class vision1:
     self.image_sub2 = rospy.Subscriber("/camera2/robot/image_raw",Image,self.callback2)
     
     # joints
-    # defining publishers  (btw are you sure we define each joint separately and not like in lab 1? "self.joints_pub = rospy.Publisher("joints_pos",Float64MultiArray, queue_size=10)")
-    self.joint2 = rospy.Publisher('/joint_angle_2', Float64, queue_size = 10)
-    self.joint3 = rospy.Publisher('/joint_angle_3', Float64, queue_size = 10)
-    self.joint4 = rospy.Publisher('/joint_angle_4', Float64, queue_size = 10)
+    # (btw are you sure we define each joint separately and not like in lab 1? "self.joints_pub = rospy.Publisher("joints_pos",Float64MultiArray, queue_size=10)")
+    self.joints_pub = rospy.Publisher("joints_pos",Float64MultiArray, queue_size=10)
+    # self.joint2 = rospy.Publisher('/joint_angle_2', Float64, queue_size = 10)
+    # self.joint3 = rospy.Publisher('/joint_angle_3', Float64, queue_size = 10)
+    # self.joint4 = rospy.Publisher('/joint_angle_4', Float64, queue_size = 10)
     
     # initialize the bridge between openCV and ROS
     self.bridge = CvBridge()
     
-  
-  # we can rearrange the following code from lab 1 to complete part 2.1
     	
   # In this method you can focus on detecting the centre of the red circle
   def detect_red(self,image):
@@ -95,26 +97,31 @@ class vision1:
   # Calculate the conversion from pixel to meter
   def pixel2meter(self,image):
       # Obtain the centre of each coloured blob
-      circle1Pos = self.detect_blue(image)
+      # take green and red as these are the edge circles
+      circle1Pos = self.detect_red(image)
       circle2Pos = self.detect_green(image)
       # find the distance between two circles
       dist = np.sum((circle1Pos - circle2Pos)**2)
-      return 3 / np.sqrt(dist)
+      # 10 because that is the distance between the circles in meters (4+0+3.2+2.8)
+      return 10 / np.sqrt(dist)
 
 
   # Calculate the relevant joint angles from the image
   def detect_joint_angles(self,image):
     a = self.pixel2meter(image)
     # Obtain the centre of each coloured blob 
-    center = a * self.detect_yellow(image)
-    circle1Pos = a * self.detect_blue(image) 
-    circle2Pos = a * self.detect_green(image) 
+    center = a * self.detect_green(image)
+    circle1Pos = a * self.detect_yellow(image) 
+    circle2Pos = a * self.detect_blue(image) 
     circle3Pos = a * self.detect_red(image)
     # Solve using trigonometry
-    ja1 = np.arctan2(center[0]- circle1Pos[0], center[1] - circle1Pos[1])
-    ja2 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1]) - ja1
-    ja3 = np.arctan2(circle2Pos[0]-circle3Pos[0], circle2Pos[1]-circle3Pos[1]) - ja2 - ja1
-    return np.array([ja1, ja2, ja3])
+    # asssume that joint 1 is fixed
+    ja1 = 0
+    # distance between joints 2 and 3 is 0  
+    ja2 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1])
+    ja3 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1])
+    ja4 = np.arctan2(circle2Pos[0]-circle3Pos[0], circle2Pos[1]-circle3Pos[1]) - ja2
+    return np.array([ja1, ja2, ja3, ja4])
   
 
   # Recieve data from camera 1, process it, and publish
@@ -128,11 +135,30 @@ class vision1:
     # Uncomment if you want to save the image
     #cv2.imwrite('image_copy.png', cv_image)
 
-    im1=cv2.imshow('window1', self.cv_image1)
-    cv2.waitKey(1)
+    a = self.detect_joint_angles(self.cv_image1)
+    #im1=cv2.imshow('window1', self.cv_image1)
+    #cv2.waitKey(1)
+    
+    # assigning angle values
+    #self.joint2 = Float64()
+    #self.joint2.data = a[0]
+    
+    #self.joint3 = Float64()
+    #self.joint3 = a[1]
+    
+    #self.joint4 = Float64()
+    #self.joint4 = a[2]
+    
+    self.joints = Float64MultiArray()
+    self.joints.data = a
+    
     # Publish the results
     try: 
       self.image_pub1.publish(self.bridge.cv2_to_imgmsg(self.cv_image1, "bgr8"))
+      self.joints_pub.publish(self.joints)
+      #self.joint2.publish(self.joint2)
+      #self.joint3.publish(self.joint3)
+      #self.joint4.publish(self.joint4)
     except CvBridgeError as e:
       print(e)
       
@@ -140,17 +166,40 @@ class vision1:
   def callback2(self,data):
     # Recieve the image
     try:
+      #self.cv_image1 = self.bridge.imgmsg_to_cv2(data, "bgr8")
       self.cv_image2 = self.bridge.imgmsg_to_cv2(data, "bgr8")
     except CvBridgeError as e:
       print(e)
     # Uncomment if you want to save the image
     #cv2.imwrite('image_copy.png', cv_image)
-    im2=cv2.imshow('window2', self.cv_image2)
+    
+    #a = self.detect_joint_angles(self.cv_image1)
+    a = self.detect_joint_angles(self.cv_image2)
+    
+    image = np.concatenate((self.cv_image1, self.cv_image2), axis=1)
+    im = cv2.imshow('camera1 and camera 2', image)
+    #im2=cv2.imshow('window2', self.cv_image2)
     cv2.waitKey(1)
+    
+    # assigning angle values
+    """self.joint2 = Float64()
+    self.joint2.data = a[0]
+    
+    self.joint3 = Float64()
+    self.joint3 = a[1]
+    
+    self.joint4 = Float64()
+    self.joint4 = a[2]"""
+    self.joints = Float64MultiArray()
+    self.joints.data = a
 
     # Publish the results
     try: 
       self.image_pub2.publish(self.bridge.cv2_to_imgmsg(self.cv_image2, "bgr8"))
+      self.joints_pub.publish(self.joints)
+      """self.joint2.publish(self.joint2)
+      self.joint3.publish(self.joint3)
+      self.joint4.publish(self.joint4)"""
     except CvBridgeError as e:
       print(e)
       
