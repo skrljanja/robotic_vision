@@ -2,7 +2,6 @@
 
 import rospy
 from sensor_msgs.msg import Image
-#from std_msgs.msg import Float64
 
 # imports from image files
 import roslib
@@ -38,10 +37,10 @@ class vision1:
     
     # joints
     # (btw are you sure we define each joint separately and not like in lab 1? "self.joints_pub = rospy.Publisher("joints_pos",Float64MultiArray, queue_size=10)")
-    self.joints_pub = rospy.Publisher("joints_pos",Float64MultiArray, queue_size=10)
-    # self.joint2 = rospy.Publisher('/joint_angle_2', Float64, queue_size = 10)
-    # self.joint3 = rospy.Publisher('/joint_angle_3', Float64, queue_size = 10)
-    # self.joint4 = rospy.Publisher('/joint_angle_4', Float64, queue_size = 10)
+    # self.joints_pub = rospy.Publisher("joints_pos",Float64MultiArray, queue_size=10)
+    self.joint2_pub = rospy.Publisher('joint_angle_2', Float64, queue_size = 10)
+    self.joint3_pub = rospy.Publisher('joint_angle_3', Float64, queue_size = 10)
+    self.joint4_pub = rospy.Publisher('joint_angle_4', Float64, queue_size = 10)
     
     # initialize the bridge between openCV and ROS
     self.bridge = CvBridge()
@@ -116,12 +115,12 @@ class vision1:
     circle3Pos = a * self.detect_red(image)
     # Solve using trigonometry
     # asssume that joint 1 is fixed
-    ja1 = 0
+    # ja1 = 0
     # distance between joints 2 and 3 is 0  
     ja2 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1])
     ja3 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1])
     ja4 = np.arctan2(circle2Pos[0]-circle3Pos[0], circle2Pos[1]-circle3Pos[1]) - ja2
-    return np.array([ja1, ja2, ja3, ja4])
+    return np.array([ja2, ja3, ja4])
   
 
   # Recieve data from camera 1, process it, and publish
@@ -140,25 +139,25 @@ class vision1:
     #cv2.waitKey(1)
     
     # assigning angle values
-    #self.joint2 = Float64()
-    #self.joint2.data = a[0]
+    self.joint2 = Float64()
+    self.joint2.data = a[0]
     
-    #self.joint3 = Float64()
-    #self.joint3 = a[1]
+    self.joint3 = Float64()
+    self.joint3.data = a[1]
     
-    #self.joint4 = Float64()
-    #self.joint4 = a[2]
+    self.joint4 = Float64()
+    self.joint4.data = a[2]
     
-    self.joints = Float64MultiArray()
-    self.joints.data = a
+    # self.joints = Float64MultiArray()
+    # self.joints.data = a
     
     # Publish the results
     try: 
       self.image_pub1.publish(self.bridge.cv2_to_imgmsg(self.cv_image1, "bgr8"))
-      self.joints_pub.publish(self.joints)
-      #self.joint2.publish(self.joint2)
-      #self.joint3.publish(self.joint3)
-      #self.joint4.publish(self.joint4)
+      # self.joints_pub.publish(self.joints)
+      self.joint2_pub.publish(self.joint2)
+      self.joint3_pub.publish(self.joint3)
+      self.joint4_pub.publish(self.joint4)
     except CvBridgeError as e:
       print(e)
       
@@ -182,24 +181,24 @@ class vision1:
     cv2.waitKey(1)
     
     # assigning angle values
-    """self.joint2 = Float64()
+    self.joint2 = Float64()
     self.joint2.data = a[0]
     
     self.joint3 = Float64()
-    self.joint3 = a[1]
+    self.joint3.data = a[1]
     
     self.joint4 = Float64()
-    self.joint4 = a[2]"""
-    self.joints = Float64MultiArray()
-    self.joints.data = a
+    self.joint4.data = a[2]
+    #self.joints = Float64MultiArray()
+    #self.joints.data = a
 
     # Publish the results
     try: 
       self.image_pub2.publish(self.bridge.cv2_to_imgmsg(self.cv_image2, "bgr8"))
-      self.joints_pub.publish(self.joints)
-      """self.joint2.publish(self.joint2)
-      self.joint3.publish(self.joint3)
-      self.joint4.publish(self.joint4)"""
+      #self.joints_pub.publish(self.joints)
+      self.joint2_pub.publish(self.joint2)
+      self.joint3_pub.publish(self.joint3)
+      self.joint4_pub.publish(self.joint4)
     except CvBridgeError as e:
       print(e)
       
