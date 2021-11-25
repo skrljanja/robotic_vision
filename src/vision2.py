@@ -19,6 +19,10 @@ class vision2:
   def __init__(self):
     # initialize the node named image_processing
     rospy.init_node('image_processing', anonymous=True)
+    # initialize the bridge between openCV and ROS
+    self.bridge = CvBridge()
+    self.cv_image1 = Image()
+    self.cv_image2 = Image()
     
     # image1
     # initialize a publisher to send images from camera1 to a topic named image_topic1
@@ -39,9 +43,10 @@ class vision2:
     self.joint3_pub = rospy.Publisher('joint_angle_3', Float64, queue_size = 10)
     self.joint4_pub = rospy.Publisher('joint_angle_4', Float64, queue_size = 10)
     
-    # initialize the bridge between openCV and ROS
-    self.bridge = CvBridge()
     
+    self.joint1 = Float64()
+    
+
     	
   # In this method you can focus on detecting the centre of the red circle
   def detect_red(self,image):
@@ -50,9 +55,15 @@ class vision2:
       # This applies a dilate that makes the binary region larger (the more iterations the larger it becomes)
       kernel = np.ones((5, 5), np.uint8)
       mask = cv2.dilate(mask, kernel, iterations=3)
+      # this if statement handles the case where the joint is obscured. returns junk value coordinates
+      height, width = image.shape[:2]
+      if height == 0:
+          return np.array([-1, -1])
       # Obtain the moments of the binary image
       M = cv2.moments(mask)
-      # Calculate pixel coordinates for the centre of the blob
+      # Calculate pixel coordinates for the centre of the blob#if M['m00'] == 0:
+      if M['m00'] == 0:
+          return np.array([-1, -1])
       cx = int(M['m10'] / M['m00'])
       cy = int(M['m01'] / M['m00'])
       return np.array([cx, cy])
@@ -63,7 +74,11 @@ class vision2:
       mask = cv2.inRange(image, (0, 100, 0), (0, 255, 0))
       kernel = np.ones((5, 5), np.uint8)
       mask = cv2.dilate(mask, kernel, iterations=3)
+      height, width = image.shape[:2]
+
       M = cv2.moments(mask)
+      if M['m00'] == 0:
+          return np.array([-1, -1])
       cx = int(M['m10'] / M['m00'])
       cy = int(M['m01'] / M['m00'])
       return np.array([cx, cy])
@@ -74,7 +89,13 @@ class vision2:
       mask = cv2.inRange(image, (100, 0, 0), (255, 0, 0))
       kernel = np.ones((5, 5), np.uint8)
       mask = cv2.dilate(mask, kernel, iterations=3)
+      height, width = image.shape[:2]
+      if height == 0:
+          return np.array([-1, -1])
+      
       M = cv2.moments(mask)
+      if M['m00'] == 0:
+          return np.array([-1, -1])
       cx = int(M['m10'] / M['m00'])
       cy = int(M['m01'] / M['m00'])
       return np.array([cx, cy])
@@ -84,10 +105,18 @@ class vision2:
       mask = cv2.inRange(image, (0, 100, 100), (0, 255, 255))
       kernel = np.ones((5, 5), np.uint8)
       mask = cv2.dilate(mask, kernel, iterations=3)
+      
+      height, width = image.shape[:2]
+      if height == 0:
+          return np.array([-1, -1])
+      
       M = cv2.moments(mask)
+      if M['m00'] == 0:
+          return np.array([-1, -1])
       cx = int(M['m10'] / M['m00'])
       cy = int(M['m01'] / M['m00'])
       return np.array([cx, cy])
+      
 
 
   # Calculate the conversion from pixel to meter
@@ -100,105 +129,141 @@ class vision2:
       dist = np.sum((circle1Pos - circle2Pos)**2)
       # 10 because that is the distance between the circles in meters (4+0+3.2+2.8)
       return 10 / np.sqrt(dist)
+  
+
+
+
 
 
   # Calculate the relevant joint angles from the image
-  def detect_joint_angles(self,image):
-    a = self.pixel2meter(image)
+  def detect_joint_angles(self,image1, image2, prev_estimate):
+    a = self.pixel2meter(image1)
+    a2 = self.pixel2meter(image2)
     # Obtain the centre of each coloured blob 
-    center = a * self.detect_green(image)
-    circle1Pos = a * self.detect_yellow(image) 
-    circle2Pos = a * self.detect_blue(image) 
-    circle3Pos = a * self.detect_red(image)
-    # Solve using trigonometry
-    # asssume that joint 2 is fixed
-    # ja2 = 0
-    # distance between joints 2 and 3 is 0  
-    ja1 = np.arctan2(center[0]- circle1Pos[0], center[1] - circle1Pos[1])
-    ja3 = np.arctan2(circle1Pos[0]-circle2Pos[0], circle1Pos[1]-circle2Pos[1]) - ja1
-    ja4 = np.arctan2(circle2Pos[0]-circle3Pos[0], circle2Pos[1]-circle3Pos[1]) - ja2 - ja1
+
+    yellow1 = self.detect_yellow(image1) 
+    blue1 = self.detect_blue(image1) 
+    red1 = self.detect_red(image1)
+    
+
+    yellow2 = self.detect_yellow(image2) 
+    blue2 = self.detect_blue(image2) 
+    red2 =  self.detect_red(image2)
+
+    
+    ja3_camera1 = np.arctan2(yellow1[0] - blue1[0], yellow1[1] - blue1[1])
+    ja3_camera2 = np.arctan2(yellow2[0] - blue2[0], yellow2[1] - blue2[1])
+    ja4_camera1 = np.arctan2(blue1[0] - red1[0], blue1[1] - red1[1])
+    ja4_camera2 = np.arctan2(blue2[0] - red2[0], blue2[1] - red2[1])
+    
+    ja3 = prev_estimate
+    
+    if ((ja3_camera1 == 0) or (np.arctan(ja3_camera2/ja3_camera1) == 1) or (np.abs(np.arctan(ja3_camera2/ja3_camera1)) > np.pi) and (ja4_camera2 != 0)):
+        if (ja4_camera1 < 0):
+            if (ja4_camera2 < 0):
+
+                ja1 = - (np.arctan(ja4_camera1/ja4_camera2) + np.pi)
+            if (ja3_camera2 > 0):
+
+                ja1 = - (np.arctan(ja4_camera1/ja4_camera2) - np.pi)
+        else:
+            if (ja3_camera1 > 0):
+                if (ja3_camera2 < 0):
+
+                    ja1 = - np.arctan(ja4_camera1/ja4_camera2) 
+                if (ja3_camera2 > 0):
+
+                    ja1 = - np.arctan(ja4_camera1/ja4_camera2)
+    else:
+        if (ja3_camera1 < 0):
+            if (ja3_camera2 < 0):
+
+                ja1 = - (np.arctan(ja3_camera2/ja3_camera1) - np.pi)
+            if (ja3_camera2 > 0):
+ 
+                ja1 = - (np.arctan(ja3_camera2/ja3_camera1) + np.pi)
+        else:
+            if (ja3_camera1 > 0):
+                if (ja3_camera2 < 0):
+ 
+                    ja1 = - (np.arctan(ja3_camera2/ja3_camera1) + np.pi)
+                if (ja3_camera2 > 0):
+
+                    ja1 = - np.arctan(ja3_camera2/ja3_camera1)
+
+
+    if (np.abs(ja1 - prev_estimate) > 0.25):
+        if (np.abs(ja1 - np.pi - prev_estimate) < 0.4):
+            ja1 = ja1 - np.pi
+        if (np.abs(ja1 + np.pi - prev_estimate) < 0.4):
+            ja1 = ja1 + np.pi
+        if (np.abs(-ja1 - prev_estimate) < 0.4):
+            ja1 = -ja1
+        
+        
+    ja3 = np.arctan2(yellow1[0] - blue1[0], yellow1[1] - blue1[1]) * np.sin(ja1)
+    + (np.arctan2(yellow2[0] - blue2[0], yellow2[1] - blue2[1])) * np.cos(ja1)
+
+
+    ja4 = (np.arctan2(blue1[0] - red1[0], blue1[1] - red1[1]) * np.sin(ja1)
+    + np.arctan2(blue2[0] - red2[0], blue2[1] - red2[1]) * np.cos(ja1)) - ja3
+    
+
+
     return np.array([ja1, ja3, ja4])
+
   
-
-  # Recieve data from camera 1, process it, and publish
-  def callback1(self,data):
-    # Recieve the image
-    try:
-      self.cv_image1 = self.bridge.imgmsg_to_cv2(data, "bgr8")
-    except CvBridgeError as e:
-      print(e)
-    
-    # Uncomment if you want to save the image
-    #cv2.imwrite('image_copy.png', cv_image)
-
-    a = self.detect_joint_angles(self.cv_image1)
-    #im1=cv2.imshow('window1', self.cv_image1)
-    #cv2.waitKey(1)
-    
-    # assigning angle values
-    self.joint1 = Float64()
-    self.joint1.data = a[0]
-    
-    self.joint3 = Float64()
-    self.joint3.data = a[1]
-    
-    self.joint4 = Float64()
-    self.joint4.data = a[2]
-    
-    # self.joints = Float64MultiArray()
-    # self.joints.data = a
-    
-    # Publish the results
-    try: 
-      self.image_pub1.publish(self.bridge.cv2_to_imgmsg(self.cv_image1, "bgr8"))
-      # self.joints_pub.publish(self.joints)
-      self.joint1_pub.publish(self.joint1)
-      self.joint3_pub.publish(self.joint3)
-      self.joint4_pub.publish(self.joint4)
-    except CvBridgeError as e:
-      print(e)
+  def callback1(self, data): 
+      try:
+            self.cv_image1 = self.bridge.imgmsg_to_cv2(data, "bgr8")
+      except CvBridgeError as e:
+            print(e)
       
-  # Recieve data from camera 2, process it, and publish
-  def callback2(self,data):
-    # Recieve the image
-    try:
-      #self.cv_image1 = self.bridge.imgmsg_to_cv2(data, "bgr8")
-      self.cv_image2 = self.bridge.imgmsg_to_cv2(data, "bgr8")
-    except CvBridgeError as e:
-      print(e)
-    # Uncomment if you want to save the image
-    #cv2.imwrite('image_copy.png', cv_image)
-    
-    #a = self.detect_joint_angles(self.cv_image1)
-    a = self.detect_joint_angles(self.cv_image2)
-    
-    image = np.concatenate((self.cv_image1, self.cv_image2), axis=1)
-    im = cv2.imshow('camera1 and camera 2', image)
-    #im2=cv2.imshow('window2', self.cv_image2)
-    cv2.waitKey(1)
-    
-    # assigning angle values
-    self.joint1 = Float64()
-    self.joint1.data = a[0]
-    
-    self.joint3 = Float64()
-    self.joint3.data = a[1]
-    
-    self.joint4 = Float64()
-    self.joint4.data = a[2]
-    #self.joints = Float64MultiArray()
-    #self.joints.data = a
 
-    # Publish the results
-    try: 
-      self.image_pub2.publish(self.bridge.cv2_to_imgmsg(self.cv_image2, "bgr8"))
-      #self.joints_pub.publish(self.joints)
-      self.joint1_pub.publish(self.joint1)
-      self.joint3_pub.publish(self.joint3)
-      self.joint4_pub.publish(self.joint4)
-    except CvBridgeError as e:
-      print(e)
+
+  def callback2(self, data): 
+      try:
+            self.cv_image2 = self.bridge.imgmsg_to_cv2(data, "bgr8")
+      except CvBridgeError as e:
+            print(e)
       
+      self.callback()
+
+
+
+
+  def callback(self):
+        
+    
+        angles = self.detect_joint_angles(self.cv_image1, self.cv_image2, self.joint1.data)
+
+        self.joint1 = Float64()
+        self.joint1.data = angles[0]
+        
+        self.joint3 = Float64()
+        self.joint3.data = angles[1]
+    
+        self.joint4 = Float64()
+        self.joint4.data = angles[2]
+    
+        try:
+
+            self.joint1_pub.publish(self.joint1)
+            self.joint4_pub.publish(self.joint4)
+            self.joint3_pub.publish(self.joint3)
+        except CvBridgeError as e:
+            print(e)
+ 
+    
+    
+    
+    
+
+
+    
+
+  
+ 
 
 # call the class
 def main(args):
