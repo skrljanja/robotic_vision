@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 
 import rospy
-from sensor_msgs.msg import Image
-
-# imports from image files
 import roslib
 import sys
 import cv2
 import numpy as np
+from scipy.spatial.transform import Rotation as R
 from std_msgs.msg import String
-from std_msgs.msg import Float64MultiArray, Float64
+from std_msgs.msg import Float64, Float64MultiArray
 from cv_bridge import CvBridge, CvBridgeError
+import rospy
+from sensor_msgs.msg import Image
 
 
 class vision2:
@@ -45,9 +45,11 @@ class vision2:
     
     
     self.joint1 = Float64()
+    self.joint3 = Float64()
+    self.joint4 = Float64()
     
 
-    	
+    
   # In this method you can focus on detecting the centre of the red circle
   def detect_red(self,image):
       # Isolate the blue colour in the image as a binary image
@@ -99,6 +101,7 @@ class vision2:
       cx = int(M['m10'] / M['m00'])
       cy = int(M['m01'] / M['m00'])
       return np.array([cx, cy])
+  
 
   # Detecting the centre of the yellow circle
   def detect_yellow(self,image):
@@ -116,109 +119,109 @@ class vision2:
       cx = int(M['m10'] / M['m00'])
       cy = int(M['m01'] / M['m00'])
       return np.array([cx, cy])
+  
+  def unit_vector(self, vector):
+    return (vector / np.linalg.norm(vector))
+  
+  def angle_between(self, v1, v2):
+
+    v1_u = self.unit_vector(v1)
+    v2_u = self.unit_vector(v2)
+    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
+
+  def project_vector(self, vector):        
+      normal = np.array([0,1,0])       
+   
+      n_norm = np.sqrt(sum(normal**2))    
+      projection = (np.dot(vector, normal)/n_norm**2)*normal
+  
+      print (projection)
+      return projection
+
+      
+  def get_link1_vector(self, image1, image2):
+        bottom_im1 = self.detect_green(image1)
+        bottom_im2 = self.detect_green(image2)
+        top_im1 = self.detect_yellow(image1)
+        top_im2 = self.detect_yellow(image2)
+        
+        x = top_im2[0] - bottom_im2[0]
+        y = top_im1[0] - bottom_im1[0]
+        z = top_im1[1] - bottom_im1[0]
+        
+        return np.array([x,y,z])
+        
+  def get_link2_vector(self, image1, image2):
+        top_im1 = self.detect_blue(image1)
+        top_im2 = self.detect_blue(image2)
+        bottom_im1 = self.detect_yellow(image1)
+        bottom_im2 = self.detect_yellow(image2)
+        if (top_im1[0] == -1):
+            top_im1 = bottom_im1
+        if (top_im2[0] == -1):
+            top_im2 = bottom_im2
+    
+        
+        x = top_im2[0] - bottom_im2[0]
+        y = top_im1[0] - bottom_im1[0]
+        z = top_im1[1] - bottom_im1[0]
+        
+        return np.array([x,y,z])
       
 
-
-  # Calculate the conversion from pixel to meter
-  def pixel2meter(self,image):
-      # Obtain the centre of each coloured blob
-      # take green and red as these are the edge circles
-      circle1Pos = self.detect_red(image)
-      circle2Pos = self.detect_green(image)
-      # find the distance between two circles
-      dist = np.sum((circle1Pos - circle2Pos)**2)
-      # 10 because that is the distance between the circles in meters (4+0+3.2+2.8)
-      return 10 / np.sqrt(dist)
-  
-
-
-
-
-
-  # Calculate the relevant joint angles from the image
-  def detect_joint_angles(self,image1, image2, prev_estimate):
-    a = self.pixel2meter(image1)
-    a2 = self.pixel2meter(image2)
-    # Obtain the centre of each coloured blob 
-
-    yellow1 = self.detect_yellow(image1) 
-    blue1 = self.detect_blue(image1) 
-    red1 = self.detect_red(image1)
-    
-
-    yellow2 = self.detect_yellow(image2) 
-    blue2 = self.detect_blue(image2) 
-    red2 =  self.detect_red(image2)
-
-    
-    ja3_camera1 = np.arctan2(yellow1[0] - blue1[0], yellow1[1] - blue1[1])
-    ja3_camera2 = np.arctan2(yellow2[0] - blue2[0], yellow2[1] - blue2[1])
-    ja4_camera1 = np.arctan2(blue1[0] - red1[0], blue1[1] - red1[1])
-    ja4_camera2 = np.arctan2(blue2[0] - red2[0], blue2[1] - red2[1])
-    
-    ja3 = prev_estimate
-    
-    if ((ja3_camera1 == 0) or (np.arctan(ja3_camera2/ja3_camera1) == 1) or (np.abs(np.arctan(ja3_camera2/ja3_camera1)) > np.pi) and (ja4_camera2 != 0)):
-        if (ja4_camera1 < 0):
-            if (ja4_camera2 < 0):
-
-                ja1 = - (np.arctan(ja4_camera1/ja4_camera2) + np.pi)
-            if (ja3_camera2 > 0):
-
-                ja1 = - (np.arctan(ja4_camera1/ja4_camera2) - np.pi)
-        else:
-            if (ja3_camera1 > 0):
-                if (ja3_camera2 < 0):
-
-                    ja1 = - np.arctan(ja4_camera1/ja4_camera2) 
-                if (ja3_camera2 > 0):
-
-                    ja1 = - np.arctan(ja4_camera1/ja4_camera2)
-    else:
-        if (ja3_camera1 < 0):
-            if (ja3_camera2 < 0):
-
-                ja1 = - (np.arctan(ja3_camera2/ja3_camera1) - np.pi)
-            if (ja3_camera2 > 0):
- 
-                ja1 = - (np.arctan(ja3_camera2/ja3_camera1) + np.pi)
-        else:
-            if (ja3_camera1 > 0):
-                if (ja3_camera2 < 0):
- 
-                    ja1 = - (np.arctan(ja3_camera2/ja3_camera1) + np.pi)
-                if (ja3_camera2 > 0):
-
-                    ja1 = - np.arctan(ja3_camera2/ja3_camera1)
-
-
-    if (np.abs(ja1 - prev_estimate) > 0.25):
-        if (np.abs(ja1 - np.pi - prev_estimate) < 0.4):
-            ja1 = ja1 - np.pi
-        if (np.abs(ja1 + np.pi - prev_estimate) < 0.4):
-            ja1 = ja1 + np.pi
-        if (np.abs(-ja1 - prev_estimate) < 0.4):
-            ja1 = -ja1
+  def get_link3_vector(self, image1, image2):
+        bottom_im1 = self.detect_blue(image1)
+        bottom_im2 = self.detect_blue(image2)
+        top_im1 = self.detect_red(image1)
+        top_im2 = self.detect_red(image2)
         
+        if (bottom_im1[0] == -1):
+            bottom_im1 = self.detect_yellow(image1)
+        if (bottom_im2[0] == -1):
+            bottom_im2 = self.detect_yellow(image2)
+        if (top_im1[0] == -1):
+            top_im1 = bottom_im1
+        if (top_im2[0] == -1):
+            top_im2 = bottom_im2
+        # add dealing with -1
         
-    ja3 = np.arctan2(yellow1[0] - blue1[0], yellow1[1] - blue1[1]) * np.sin(ja1)
-    + (np.arctan2(yellow2[0] - blue2[0], yellow2[1] - blue2[1])) * np.cos(ja1)
+        x = top_im2[0] - bottom_im2[0]
+        y = top_im1[0] - bottom_im1[0]
+        z = top_im1[1] - bottom_im1[0]
+        
+        return np.array([x,y,z])
+    
+  
+    
+  def detect_joint_angles(self, image1, image2):
+      v1 = self.get_link1_vector(image1, image2)
+      v2 = self.get_link2_vector(image1, image2)
+      v3 = self.get_link3_vector(image1, image2)
+      
 
-
-    ja4 = (np.arctan2(blue1[0] - red1[0], blue1[1] - red1[1]) * np.sin(ja1)
-    + np.arctan2(blue2[0] - red2[0], blue2[1] - red2[1]) * np.cos(ja1)) - ja3
+      ja4 = self.angle_between(v2, v3)
+      ja3 = self.angle_between(v1, v2) - np.pi + 0.4
+      if (self.angle_between(v2, np.array([0,-1,0])) > np.pi/2):
+          ja3 = - ja3
     
 
+      v3_dummy = np.array([np.sin(ja4), 0, np.cos(ja4)])
 
-    return np.array([ja1, ja3, ja4])
-
+      
+      ja1 = self.angle_between(np.array([0, -1, 0]), np.array([v2[0], v2[1], 0]))
+      if ((ja3 < 0.2) & (ja3 > 0.2)):
+          ja1 = self.angle_between(v3, v3_dummy)
+          
+      return np.array([ja1, ja3, ja4])
+      
+      
   
+    
   def callback1(self, data): 
       try:
             self.cv_image1 = self.bridge.imgmsg_to_cv2(data, "bgr8")
       except CvBridgeError as e:
             print(e)
-      
 
 
   def callback2(self, data): 
@@ -226,20 +229,18 @@ class vision2:
             self.cv_image2 = self.bridge.imgmsg_to_cv2(data, "bgr8")
       except CvBridgeError as e:
             print(e)
-      
+
       self.callback()
-
-
-
+      
 
   def callback(self):
         
     
-        angles = self.detect_joint_angles(self.cv_image1, self.cv_image2, self.joint1.data)
+        angles = self.detect_joint_angles(self.cv_image1, self.cv_image2)
 
         self.joint1 = Float64()
         self.joint1.data = angles[0]
-        
+
         self.joint3 = Float64()
         self.joint3.data = angles[1]
     
@@ -247,25 +248,12 @@ class vision2:
         self.joint4.data = angles[2]
     
         try:
-
             self.joint1_pub.publish(self.joint1)
             self.joint4_pub.publish(self.joint4)
             self.joint3_pub.publish(self.joint3)
         except CvBridgeError as e:
             print(e)
- 
-    
-    
-    
-    
-
-
-    
-
-  
- 
-
-# call the class
+            
 def main(args):
   vis2 = vision2()
   try:
@@ -278,3 +266,4 @@ def main(args):
 if __name__ == '__main__':
     main(sys.argv)
     
+
