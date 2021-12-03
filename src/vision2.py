@@ -147,7 +147,7 @@ class vision2:
         
         x = top_im2[0] - bottom_im2[0]
         y = top_im1[0] - bottom_im1[0]
-        z = top_im1[1] - bottom_im1[0]
+        z = top_im1[1] - bottom_im1[1]
         
         return np.array([x,y,z])
         
@@ -164,7 +164,7 @@ class vision2:
         
         x = top_im2[0] - bottom_im2[0]
         y = top_im1[0] - bottom_im1[0]
-        z = top_im1[1] - bottom_im1[0]
+        z = top_im1[1] - bottom_im1[1]
         
         return np.array([x,y,z])
       
@@ -187,7 +187,7 @@ class vision2:
         
         x = top_im2[0] - bottom_im2[0]
         y = top_im1[0] - bottom_im1[0]
-        z = top_im1[1] - bottom_im1[0]
+        z = top_im1[1] - bottom_im1[1]
         
         return np.array([x,y,z])
     
@@ -200,7 +200,7 @@ class vision2:
       
 
       ja4 = self.angle_between(v2, v3)
-      ja3 = self.angle_between(v1, v2) - np.pi + 0.4
+      ja3 = self.angle_between(v1, v2) 
       if (self.angle_between(v2, np.array([0,-1,0])) > np.pi/2):
           ja3 = - ja3
     
